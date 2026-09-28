@@ -671,12 +671,12 @@ function createRequestHandler() {
 
 if (require.main === module) {
   const port = Number(process.env.PORT || 3000);
-  const host = process.env.HOST || '127.0.0.1';
+  const host = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
   const server = http.createServer(createRequestHandler());
   server.listen(port, host, () => {
     const displayHost = host === '0.0.0.0' ? 'localhost' : host;
     console.log(`Roll na Goela rodando em http://${displayHost}:${port}`);
-    console.log('Para compartilhar na rede local, defina HOST=0.0.0.0 antes de iniciar.');
+    console.log(`Servidor escutando em ${host}:${port}`);
   });
 }
 
