@@ -162,14 +162,10 @@ function renderRoster() {
   elements.players.innerHTML = players.map((player) => {
     const current = specs.get(player.currentSpecId);
     const assignment = assignments.get(player.id);
-    const sameClass = assignment && current?.classId === assignment.classId;
     const isLatest = assignment && latest?.playerId === player.id;
     const assignmentDetails = assignment
-      ? `${sameClass ? 'Mesma classe · ' : ''}${assignment.className} · ${ROLE_LABELS[assignment.role]}`
-      : '';
-    const assignmentMeta = assignment
-      ? `${sameClass ? 'Mesma classe · ' : ''}${assignment.className}`
-      : 'Sua spec sorteada aparecerá aqui';
+      ? `${assignment.specName} · ${assignment.className} · ${ROLE_LABELS[assignment.role]}`
+      : 'Sem resultado';
     const currentTitle = current ? `Atual: ${current.name} · ${current.className}` : 'Spec atual não encontrada';
     const initial = player.name.trim().charAt(0).toLocaleUpperCase('pt-BR') || '?';
     const actions = locked
@@ -189,15 +185,9 @@ function renderRoster() {
           </div>
           ${actions}
         </div>
-        <div class="player-result${assignment ? ' has-assignment' : ''}"${assignment ? ` data-role="${escapeHtml(assignment.role)}"` : ''} title="${escapeHtml(assignmentDetails || 'Aguardando sorteio')}">
-          <div class="player-result-copy">
-            <small class="player-result-label">${assignment ? 'Spec sorteada' : 'Aguardando sorteio'}</small>
-            <strong class="player-assigned${assignment ? '' : ' is-empty'}">${escapeHtml(assignment?.specName || 'Sem resultado')}</strong>
-            <small class="player-assignment-meta${sameClass ? ' same-class-note' : ''}">${escapeHtml(assignmentMeta)}</small>
-          </div>
-          ${assignment
-            ? `<span class="role-tag" data-role="${escapeHtml(assignment.role)}">${escapeHtml(ROLE_LABELS[assignment.role])}</span>`
-            : '<span class="pending-badge" aria-label="Ainda não sorteado">…</span>'}
+        <div class="player-result${assignment ? ' has-assignment' : ' is-empty'}"${assignment ? ` data-role="${escapeHtml(assignment.role)}"` : ''} title="${escapeHtml(assignmentDetails)}">
+          <strong class="player-assigned${assignment ? '' : ' is-empty'}">${escapeHtml(assignment ? `${assignment.specName} ${assignment.className}` : 'Sem resultado')}</strong>
+          ${assignment ? `<span class="role-tag" data-role="${escapeHtml(assignment.role)}">${escapeHtml(ROLE_LABELS[assignment.role])}</span>` : ''}
         </div>
       </article>`;
   }).join('');

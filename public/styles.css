@@ -88,16 +88,12 @@ button:disabled { cursor: not-allowed !important; }
 .row-action { display: grid; width: 30px; height: 31px; padding: 0; place-items: center; border: 1px solid transparent; border-radius: 8px; color: #a8b5a5; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; transition: color .16s, border-color .16s, background .16s; }
 .row-action:hover { border-color: rgba(189, 250, 112, .22); color: var(--acid); background: rgba(189, 250, 112, .07); }
 .row-action.delete:hover { border-color: rgba(242, 139, 128, .25); color: var(--danger); background: rgba(242, 139, 128, .07); }
-.player-result { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 10px 11px; border: 1px solid rgba(194, 228, 195, .1); border-radius: 10px; background: rgba(4, 10, 6, .28); }
+.player-result { display: flex; min-width: 0; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border: 1px solid rgba(194, 228, 195, .1); border-radius: 10px; background: rgba(4, 10, 6, .28); }
 .player-result.has-assignment { border-color: color-mix(in srgb, var(--role-color) 35%, transparent); background: linear-gradient(115deg, color-mix(in srgb, var(--role-color) 9%, rgba(4, 10, 6, .4)), rgba(4, 10, 6, .24)); }
-.player-result-copy { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
-.player-result-label { color: #9eae9b; font-size: 10px; font-weight: 750; letter-spacing: .075em; text-transform: uppercase; }
-.player-assigned { overflow: hidden; color: var(--acid); font-size: 18px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.player-result.is-empty { justify-content: flex-start; }
+.player-assigned { min-width: 0; overflow: hidden; color: var(--acid); font-size: 17px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
 .player-assigned.is-empty { color: #a8b7a5; font-size: 16px; font-weight: 600; }
-.player-assignment-meta { overflow: hidden; color: #a8b7a5; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.player-assignment-meta.same-class-note { color: #d1e9b8; }
 .role-tag { display: inline-flex; max-width: 112px; align-items: center; justify-content: center; padding: 7px 9px; border: 1px solid color-mix(in srgb, var(--role-color) 35%, transparent); border-radius: 8px; color: var(--role-color); background: color-mix(in srgb, var(--role-color) 9%, rgba(0, 0, 0, .28)); font-size: 12px; font-weight: 750; text-align: center; white-space: nowrap; }
-.pending-badge { display: grid; width: 30px; height: 30px; place-items: center; border: 1px dashed rgba(168, 183, 165, .28); border-radius: 50%; color: #73816f; font-size: 18px; }
 
 .feedback-message { margin-top: 12px; padding: 12px 15px; border: 1px solid rgba(242, 139, 128, .3); border-radius: 9px; color: #ffc0b7; background: rgba(117, 42, 34, .2); font-size: 15px; }
 .modal { width: min(calc(100vw - 32px), 480px); max-width: 480px; padding: 0; border: 1px solid rgba(194, 228, 195, .2); border-radius: 16px; color: var(--text); background: #111b14; box-shadow: 0 24px 80px rgba(0, 0, 0, .6); }
