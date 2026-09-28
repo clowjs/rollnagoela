@@ -1,0 +1,436 @@
+const ROLE_LABELS = {
+  tank: 'Tank',
+  healer: 'Healer',
+  melee: 'Melee DPS',
+  ranged: 'Ranged DPS',
+};
+
+const ROLE_CARD_LABELS = {
+  tank: 'Tank',
+  healer: 'Healer',
+  melee: 'Melee',
+  ranged: 'Ranged',
+};
+
+const elements = {
+  addPlayer: document.getElementById('add-player'),
+  brandName: document.getElementById('brand-clan-name'),
+  catalog: document.getElementById('catalog-list'),
+  clanDialog: document.getElementById('clan-dialog'),
+  clanForm: document.getElementById('clan-form'),
+  clanNameInput: document.getElementById('clan-name-input'),
+  counter: document.getElementById('draw-counter'),
+  currentSpec: document.getElementById('current-spec'),
+  feedback: document.getElementById('feedback-message'),
+  exportButton: document.getElementById('export-results'),
+  exportDialog: document.getElementById('export-dialog'),
+  exportList: document.getElementById('export-list'),
+  copyExport: document.getElementById('copy-export'),
+  mainAction: document.getElementById('main-action'),
+  mainActionLabel: document.getElementById('main-action-label'),
+  playerCount: document.getElementById('player-count'),
+  playerDialog: document.getElementById('player-dialog'),
+  playerForm: document.getElementById('player-form'),
+  playerId: document.getElementById('player-id'),
+  playerName: document.getElementById('player-name'),
+  playerTitle: document.getElementById('player-dialog-title'),
+  players: document.getElementById('roster-list'),
+  resetDraw: document.getElementById('reset-draw'),
+  specCount: document.getElementById('spec-count'),
+  toast: document.getElementById('toast'),
+};
+
+let state = null;
+let busy = false;
+let toastTimer = null;
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]);
+}
+
+function getCatalogLookups() {
+  const classes = new Map(state.catalog.map((wowClass) => [wowClass.id, wowClass]));
+  const specs = new Map();
+  for (const wowClass of state.catalog) {
+    for (const spec of wowClass.specs) {
+      specs.set(spec.id, { ...spec, classId: wowClass.id, className: wowClass.name });
+    }
+  }
+  return { classes, specs };
+}
+
+function showToast(message) {
+  elements.toast.textContent = message;
+  elements.toast.classList.add('is-visible');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => elements.toast.classList.remove('is-visible'), 3000);
+}
+
+function showFeedback(message) {
+  elements.feedback.textContent = message;
+  elements.feedback.hidden = false;
+}
+
+function clearFeedback() {
+  elements.feedback.textContent = '';
+  elements.feedback.hidden = true;
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...options.headers,
+    },
+  });
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error('Resposta inválida do servidor.');
+  }
+  if (!response.ok) throw new Error(payload.error || 'Não foi possível concluir a operação.');
+  return payload;
+}
+
+function renderHeader() {
+  if (!state) return;
+  elements.brandName.textContent = state.clanName;
+  document.title = `${state.clanName} — Sorteio de specs`;
+  const totalPlayers = state.players.length;
+  const drawnPlayers = state.draw?.revealedCount || 0;
+  elements.playerCount.textContent = `${drawnPlayers} / ${totalPlayers}`;
+
+  elements.counter.textContent = state.draw
+    ? state.draw.status === 'complete' ? 'Sorteio concluído' : 'Sorteio em andamento'
+    : totalPlayers ? `${totalPlayers} cadastrados` : 'Cadastre jogadores';
+
+  const complete = state.draw && state.draw.revealedCount >= state.draw.total;
+  elements.addPlayer.disabled = busy || Boolean(state.draw);
+  elements.mainAction.disabled = busy || (!state.draw && totalPlayers < 2) || Boolean(complete);
+  elements.exportButton.disabled = busy || !complete;
+  elements.mainActionLabel.textContent = busy
+    ? 'Sorteando…'
+    : complete
+      ? 'Concluído'
+      : !state.draw && totalPlayers < 2 ? `Falta${totalPlayers === 0 ? 'm' : ''} ${2 - totalPlayers}` : 'Sortear';
+  elements.resetDraw.disabled = busy || !state.draw;
+}
+
+function renderCatalog() {
+  const assignments = new Map((state.draw?.assignments || []).map((assignment) => [assignment.specId, assignment]));
+  const latestSpecId = state.draw?.assignments.at(-1)?.specId;
+  const totalSpecs = state.catalog.reduce((total, wowClass) => total + wowClass.specs.length, 0);
+  elements.specCount.textContent = state.draw ? `${totalSpecs - assignments.size} / ${totalSpecs}` : String(totalSpecs);
+
+  elements.catalog.innerHTML = state.catalog.flatMap((wowClass) => wowClass.specs.map((spec) => {
+    const assignment = assignments.get(spec.id);
+    const latest = latestSpecId === spec.id;
+    const assignee = assignment ? ` · Sorteada para ${assignment.playerName}` : '';
+    return `
+      <article class="spec-card${assignment ? ' is-drawn' : ''}${latest ? ' is-latest' : ''}"
+        data-spec-id="${escapeHtml(spec.id)}" data-role="${escapeHtml(spec.role)}"
+        style="--class-color:${escapeHtml(wowClass.color)}"
+        title="${escapeHtml(`${wowClass.name} · ${spec.name} · ${ROLE_LABELS[spec.role]}${assignee}`)}">
+        <span class="spec-class-name">${escapeHtml(wowClass.name)}</span>
+        <span class="spec-detail">
+          <span class="spec-detail-name">${escapeHtml(spec.name)}</span>
+          <span aria-hidden="true">—</span>
+          <span class="spec-role">${escapeHtml(ROLE_CARD_LABELS[spec.role])}</span>
+        </span>
+        ${assignment ? '<span class="spec-check" aria-label="Sorteada">✓</span>' : ''}
+      </article>`;
+  })).join('');
+}
+
+function renderRoster() {
+  const { specs } = getCatalogLookups();
+  const assignments = new Map((state.draw?.assignments || []).map((assignment) => [assignment.playerId, assignment]));
+  const latest = state.draw?.assignments.at(-1);
+  const locked = Boolean(state.draw);
+  const players = [...state.players].sort((left, right) => (
+    left.name.localeCompare(right.name, 'pt-BR', { sensitivity: 'base' })
+    || left.id.localeCompare(right.id)
+  ));
+
+  if (!players.length) {
+    elements.players.innerHTML = '<div class="roster-empty"><span class="roster-empty-mark">+</span><span>Nenhum jogador cadastrado</span></div>';
+    return;
+  }
+
+  elements.players.innerHTML = players.map((player) => {
+    const current = specs.get(player.currentSpecId);
+    const assignment = assignments.get(player.id);
+    const sameClass = assignment && current?.classId === assignment.classId;
+    const isLatest = assignment && latest?.playerId === player.id;
+    const assignmentDetails = assignment
+      ? `${sameClass ? 'Mesma classe · ' : ''}${assignment.className} · ${ROLE_LABELS[assignment.role]}`
+      : '';
+    const currentTitle = current ? `Atual: ${current.name} · ${current.className}` : 'Spec atual não encontrada';
+    const actions = locked
+      ? '<div class="player-actions" aria-hidden="true"></div>'
+      : `<div class="player-actions">
+          <button class="row-action" type="button" data-action="edit" data-player-id="${escapeHtml(player.id)}" aria-label="Editar ${escapeHtml(player.name)}" title="Editar">✎</button>
+          <button class="row-action delete" type="button" data-action="delete" data-player-id="${escapeHtml(player.id)}" aria-label="Remover ${escapeHtml(player.name)}" title="Remover">×</button>
+        </div>`;
+
+    return `
+      <article class="player-card${isLatest ? ' is-latest' : ''}" data-player-id="${escapeHtml(player.id)}">
+        <div class="player-card-content">
+          <div class="player-assignment" title="${escapeHtml(assignmentDetails || 'Aguardando sorteio')}">
+            <strong class="player-assigned${assignment ? '' : ' is-empty'}">${escapeHtml(assignment?.specName || '—')}</strong>
+            ${assignment ? `<small class="player-assignment-meta${sameClass ? ' same-class-note' : ''}">${escapeHtml(assignmentDetails)}</small>` : ''}
+          </div>
+          <div class="player-identity">
+            <strong class="player-name" title="${escapeHtml(player.name)}">${escapeHtml(player.name)}</strong>
+            <small class="player-current" title="${escapeHtml(currentTitle)}">Atual: ${escapeHtml(current?.name || 'Spec não encontrada')}</small>
+          </div>
+        </div>
+        ${actions}
+      </article>`;
+  }).join('');
+}
+
+function render() {
+  if (!state) return;
+  renderHeader();
+  renderCatalog();
+  renderRoster();
+}
+
+function setBusy(value) {
+  busy = value;
+  renderHeader();
+}
+
+function animateSpecFlight(specId, assignment) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const playerCard = document.querySelector(`.player-card[data-player-id="${assignment.playerId}"]`);
+  const target = playerCard?.querySelector('.player-assignment');
+  const source = document.querySelector(`.spec-card[data-spec-id="${specId}"]`);
+  if (!target || !source) return;
+
+  playerCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  setTimeout(() => {
+    const sourceRect = source.getBoundingClientRect();
+    const destination = target.getBoundingClientRect();
+    if (!sourceRect.width || !destination.width || sourceRect.bottom < 0 || sourceRect.top > window.innerHeight) return;
+
+    const chip = document.createElement('div');
+    chip.className = 'flight-chip';
+    chip.textContent = `${assignment.specName} · ${assignment.className}`;
+    chip.style.left = `${sourceRect.left + 4}px`;
+    chip.style.top = `${sourceRect.top + 4}px`;
+    chip.style.width = `${Math.min(Math.max(sourceRect.width, 140), 230)}px`;
+    document.body.append(chip);
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const destinationX = destination.left + destination.width / 2;
+      const destinationY = destination.top + destination.height / 2;
+      const startX = sourceRect.left + sourceRect.width / 2;
+      const startY = sourceRect.top + sourceRect.height / 2;
+      const scale = Math.min(.96, Math.max(.7, destination.width / Math.min(Math.max(sourceRect.width, 140), 230)));
+      chip.classList.add('is-flying');
+      chip.style.transform = `translate(${destinationX - startX}px, ${destinationY - startY}px) scale(${scale}) rotate(2deg)`;
+    }));
+
+    setTimeout(() => chip.remove(), 1100);
+  }, 180);
+}
+
+async function drawNext() {
+  if (busy || !state) return;
+  clearFeedback();
+  setBusy(true);
+  const first = !state.draw;
+  try {
+    const nextState = await api(first ? '/api/draw/start' : '/api/draw/reveal', { method: 'POST' });
+    const latest = nextState.draw.assignments.at(-1);
+    state = nextState;
+    render();
+    animateSpecFlight(latest.specId, latest);
+    showToast(`${latest.playerName}: ${latest.specName} · ${latest.className}`);
+  } catch (error) {
+    showFeedback(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function populateCurrentSpecSelect(selectedId) {
+  elements.currentSpec.innerHTML = state.catalog.map((wowClass) => `
+    <optgroup label="${escapeHtml(wowClass.name)}">
+      ${wowClass.specs.map((spec) => `<option value="${escapeHtml(spec.id)}">${escapeHtml(spec.name)} — ${escapeHtml(ROLE_LABELS[spec.role])}</option>`).join('')}
+    </optgroup>`).join('');
+  if (selectedId) elements.currentSpec.value = selectedId;
+}
+
+function openPlayerDialog(playerId) {
+  if (state.draw || busy) return;
+  const player = playerId ? state.players.find((candidate) => candidate.id === playerId) : null;
+  if (playerId && !player) return;
+  elements.playerForm.reset();
+  elements.playerId.value = player?.id || '';
+  elements.playerName.value = player?.name || '';
+  elements.playerTitle.textContent = player ? 'Editar jogador' : 'Cadastrar jogador';
+  populateCurrentSpecSelect(player?.currentSpecId);
+  elements.playerDialog.showModal();
+  requestAnimationFrame(() => elements.playerName.focus());
+}
+
+function closeDialog(dialog) {
+  if (dialog?.open) dialog.close();
+}
+
+async function savePlayer(event) {
+  event.preventDefault();
+  if (busy) return;
+  const playerId = elements.playerId.value;
+  const payload = { name: elements.playerName.value, currentSpecId: elements.currentSpec.value };
+  const normalizedName = payload.name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+  const duplicateName = state.players.some((player) => (
+    player.id !== playerId && player.name.toLocaleLowerCase('pt-BR') === normalizedName
+  ));
+  const submit = elements.playerForm.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const updated = await api(playerId ? `/api/players/${encodeURIComponent(playerId)}` : '/api/players', {
+      method: playerId ? 'PUT' : 'POST',
+      body: JSON.stringify(payload),
+    });
+    state = updated;
+    closeDialog(elements.playerDialog);
+    render();
+    showToast(duplicateName ? 'Jogador salvo. Use apelidos para diferenciar nomes iguais.' : 'Jogador salvo.');
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+async function removePlayer(playerId) {
+  if (state.draw || busy) return;
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player || !window.confirm(`Remover ${player.name}?`)) return;
+  try {
+    state = await api(`/api/players/${encodeURIComponent(playerId)}`, { method: 'DELETE' });
+    render();
+    showToast('Jogador removido.');
+  } catch (error) {
+    showToast(error.message);
+  }
+}
+
+async function saveClanName(event) {
+  event.preventDefault();
+  const submit = elements.clanForm.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    state = await api('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify({ clanName: elements.clanNameInput.value }),
+    });
+    closeDialog(elements.clanDialog);
+    render();
+    showToast('Nome atualizado.');
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    submit.disabled = false;
+  }
+}
+
+async function resetDraw() {
+  if (!state.draw || busy) return;
+  if (!window.confirm('Reiniciar o sorteio? O elenco será mantido.')) return;
+  clearFeedback();
+  setBusy(true);
+  try {
+    state = await api('/api/draw/reset', { method: 'POST' });
+    render();
+    showToast('Sorteio reiniciado.');
+  } catch (error) {
+    showFeedback(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function openExportDialog() {
+  if (state?.draw?.status !== 'complete') return;
+  const rows = [...state.draw.assignments]
+    .sort((left, right) => left.playerName.localeCompare(right.playerName, 'pt-BR', { sensitivity: 'base' }))
+    .map((assignment) => `${assignment.playerName} - ${assignment.className} - ${assignment.specName}`);
+  elements.exportList.value = rows.join('\n');
+  elements.exportDialog.showModal();
+  requestAnimationFrame(() => {
+    elements.exportList.focus();
+    elements.exportList.select();
+  });
+}
+
+async function copyExportList() {
+  const text = elements.exportList.value;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    elements.exportList.focus();
+    elements.exportList.select();
+    if (!document.execCommand('copy')) {
+      showToast('Selecione a lista e use Ctrl+C.');
+      return;
+    }
+  }
+  showToast('Lista copiada.');
+}
+
+function bindEvents() {
+  elements.addPlayer.addEventListener('click', () => openPlayerDialog());
+  elements.mainAction.addEventListener('click', drawNext);
+  elements.resetDraw.addEventListener('click', resetDraw);
+  elements.exportButton.addEventListener('click', openExportDialog);
+  elements.copyExport.addEventListener('click', copyExportList);
+  elements.playerForm.addEventListener('submit', savePlayer);
+  elements.clanForm.addEventListener('submit', saveClanName);
+
+  document.getElementById('open-clan-dialog').addEventListener('click', () => {
+    elements.clanNameInput.value = state?.clanName || '';
+    elements.clanDialog.showModal();
+    requestAnimationFrame(() => elements.clanNameInput.focus());
+  });
+
+  document.addEventListener('click', (event) => {
+    const closeButton = event.target.closest('[data-close-dialog]');
+    if (closeButton) closeDialog(document.getElementById(closeButton.dataset.closeDialog));
+  });
+
+  elements.players.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-action]');
+    if (!button) return;
+    if (button.dataset.action === 'edit') openPlayerDialog(button.dataset.playerId);
+    if (button.dataset.action === 'delete') removePlayer(button.dataset.playerId);
+  });
+}
+
+async function initialize() {
+  bindEvents();
+  try {
+    state = await api('/api/state');
+    render();
+  } catch (error) {
+    elements.counter.textContent = 'Servidor indisponível';
+    elements.mainActionLabel.textContent = 'Indisponível';
+    showFeedback(error.message);
+  }
+}
+
+initialize();

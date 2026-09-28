@@ -1,0 +1,14 @@
+{
+  "name": "roll-na-goela",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sorteador de classes e specs para a raid Roll na Goela",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

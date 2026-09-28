@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0a100c">
+    <meta name="description" content="Sorteador de classes e specs para a raid.">
+    <title>Roll na Goela — Sorteio de specs</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <button class="clan-button" id="open-clan-dialog" type="button" aria-label="Editar nome do clã">
+          <span class="clan-mark" aria-hidden="true">R</span>
+          <span class="clan-name" id="brand-clan-name">Roll na Goela</span>
+          <span class="clan-edit" aria-hidden="true">✎</span>
+        </button>
+
+        <div class="top-actions">
+          <span class="draw-counter" id="draw-counter">Jogadores</span>
+          <button class="button button-secondary" id="add-player" type="button">
+            <span class="button-plus" aria-hidden="true">+</span> Cadastrar
+          </button>
+          <button class="button button-secondary" id="export-results" type="button" disabled>Exportar</button>
+          <button class="button button-primary" id="main-action" type="button" disabled>
+            <span id="main-action-label">Carregando…</span><span class="button-arrow" aria-hidden="true">→</span>
+          </button>
+          <button class="button button-reset" id="reset-draw" type="button" disabled>Reiniciar</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="page-shell">
+      <div class="board-grid">
+        <section class="list-panel" aria-labelledby="specs-title">
+          <header class="panel-header">
+            <h1 id="specs-title">Specs</h1>
+            <span class="count-badge" id="spec-count">40</span>
+          </header>
+          <div class="catalog-list" id="catalog-list" aria-live="polite"></div>
+        </section>
+
+        <section class="list-panel" aria-labelledby="players-title">
+          <header class="panel-header">
+            <h1 id="players-title">Jogadores</h1>
+            <span class="count-badge" id="player-count">0 / 0</span>
+          </header>
+          <div class="roster-list" id="roster-list" aria-live="polite"></div>
+        </section>
+      </div>
+
+      <div class="feedback-message" id="feedback-message" role="status" aria-live="polite" hidden></div>
+    </main>
+
+    <dialog class="modal" id="player-dialog" aria-labelledby="player-dialog-title">
+      <form class="modal-form" id="player-form">
+        <div class="modal-heading">
+          <h2 id="player-dialog-title">Cadastrar jogador</h2>
+          <button class="modal-close" type="button" data-close-dialog="player-dialog" aria-label="Fechar">×</button>
+        </div>
+        <input id="player-id" type="hidden">
+        <label class="form-field" for="player-name">Nome ou apelido
+          <input id="player-name" name="name" type="text" maxlength="32" required autocomplete="off">
+        </label>
+        <label class="form-field" for="current-spec">Spec atual
+          <select id="current-spec" name="currentSpecId" required></select>
+        </label>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="button" data-close-dialog="player-dialog">Cancelar</button>
+          <button class="button button-primary" type="submit">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal modal-small" id="clan-dialog" aria-labelledby="clan-dialog-title">
+      <form class="modal-form" id="clan-form">
+        <div class="modal-heading">
+          <h2 id="clan-dialog-title">Nome do clã</h2>
+          <button class="modal-close" type="button" data-close-dialog="clan-dialog" aria-label="Fechar">×</button>
+        </div>
+        <label class="form-field" for="clan-name-input">Nome
+          <input id="clan-name-input" name="clanName" type="text" maxlength="48" required autocomplete="off">
+        </label>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="button" data-close-dialog="clan-dialog">Cancelar</button>
+          <button class="button button-primary" type="submit">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal export-modal" id="export-dialog" aria-labelledby="export-dialog-title">
+      <div class="modal-form">
+        <div class="modal-heading">
+          <h2 id="export-dialog-title">Exportar sorteio</h2>
+          <button class="modal-close" type="button" data-close-dialog="export-dialog" aria-label="Fechar">×</button>
+        </div>
+        <label class="form-field" for="export-list">Jogador - Classe - Spec
+          <textarea id="export-list" rows="14" readonly spellcheck="false"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="button button-secondary" id="copy-export" type="button">Copiar lista</button>
+          <button class="button button-primary" type="button" data-close-dialog="export-dialog">Fechar</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
