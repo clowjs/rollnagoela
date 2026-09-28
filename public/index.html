@@ -34,23 +34,20 @@
     </header>
 
     <main class="page-shell">
-      <div class="board-grid">
-        <section class="list-panel" aria-labelledby="specs-title">
-          <header class="panel-header">
-            <h1 id="specs-title">Specs</h1>
-            <span class="count-badge" id="spec-count">40</span>
-          </header>
-          <div class="catalog-list" id="catalog-list" aria-live="polite"></div>
+      <section class="list-panel roster-panel" aria-labelledby="players-title">
+        <h1 class="visually-hidden" id="players-title">Jogadores</h1>
+        <section class="role-summary" aria-labelledby="role-summary-title">
+          <h2 class="role-summary-title" id="role-summary-title">ROLES SORTEADAS</h2>
+          <div class="role-summary-items" id="role-summary" aria-live="polite">
+            <div class="role-stat" data-role="tank"><span class="role-stat-name">Tank</span><strong class="role-stat-count">0</strong></div>
+            <div class="role-stat" data-role="healer"><span class="role-stat-name">Healer</span><strong class="role-stat-count">0</strong></div>
+            <div class="role-stat" data-role="melee"><span class="role-stat-name">Melee DPS</span><strong class="role-stat-count">0</strong></div>
+            <div class="role-stat" data-role="ranged"><span class="role-stat-name">Ranged DPS</span><strong class="role-stat-count">0</strong></div>
+          </div>
+          <span class="count-badge role-summary-count" id="player-count">0 / 0</span>
         </section>
-
-        <section class="list-panel" aria-labelledby="players-title">
-          <header class="panel-header">
-            <h1 id="players-title">Jogadores</h1>
-            <span class="count-badge" id="player-count">0 / 0</span>
-          </header>
-          <div class="roster-list" id="roster-list" aria-live="polite"></div>
-        </section>
-      </div>
+        <div class="roster-list" id="roster-list" aria-live="polite"></div>
+      </section>
 
       <div class="feedback-message" id="feedback-message" role="status" aria-live="polite" hidden></div>
     </main>
@@ -62,6 +59,10 @@
           <button class="modal-close" type="button" data-close-dialog="player-dialog" aria-label="Fechar">×</button>
         </div>
         <input id="player-id" type="hidden">
+        <p class="form-success" id="player-success" role="status" aria-live="polite" hidden>
+          <span class="form-success-icon" aria-hidden="true">✓</span>
+          <span id="player-success-text"></span>
+        </p>
         <label class="form-field" for="player-name">Nome ou apelido
           <input id="player-name" name="name" type="text" maxlength="32" required autocomplete="off">
         </label>

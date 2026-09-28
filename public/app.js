@@ -5,17 +5,9 @@ const ROLE_LABELS = {
   ranged: 'Ranged DPS',
 };
 
-const ROLE_CARD_LABELS = {
-  tank: 'Tank',
-  healer: 'Healer',
-  melee: 'Melee',
-  ranged: 'Ranged',
-};
-
 const elements = {
   addPlayer: document.getElementById('add-player'),
   brandName: document.getElementById('brand-clan-name'),
-  catalog: document.getElementById('catalog-list'),
   clanDialog: document.getElementById('clan-dialog'),
   clanForm: document.getElementById('clan-form'),
   clanNameInput: document.getElementById('clan-name-input'),
@@ -33,10 +25,12 @@ const elements = {
   playerForm: document.getElementById('player-form'),
   playerId: document.getElementById('player-id'),
   playerName: document.getElementById('player-name'),
+  playerSuccess: document.getElementById('player-success'),
+  playerSuccessText: document.getElementById('player-success-text'),
   playerTitle: document.getElementById('player-dialog-title'),
   players: document.getElementById('roster-list'),
   resetDraw: document.getElementById('reset-draw'),
-  specCount: document.getElementById('spec-count'),
+  roleSummary: document.getElementById('role-summary'),
   toast: document.getElementById('toast'),
 };
 
@@ -82,6 +76,19 @@ function clearFeedback() {
   elements.feedback.hidden = true;
 }
 
+function clearPlayerSuccess() {
+  elements.playerSuccess.hidden = true;
+  elements.playerSuccess.classList.remove('is-visible');
+}
+
+function showPlayerSuccess(message) {
+  elements.playerSuccessText.textContent = message;
+  elements.playerSuccess.hidden = false;
+  elements.playerSuccess.classList.remove('is-visible');
+  void elements.playerSuccess.offsetWidth;
+  elements.playerSuccess.classList.add('is-visible');
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -124,30 +131,17 @@ function renderHeader() {
   elements.resetDraw.disabled = busy || !state.draw;
 }
 
-function renderCatalog() {
-  const assignments = new Map((state.draw?.assignments || []).map((assignment) => [assignment.specId, assignment]));
-  const latestSpecId = state.draw?.assignments.at(-1)?.specId;
-  const totalSpecs = state.catalog.reduce((total, wowClass) => total + wowClass.specs.length, 0);
-  elements.specCount.textContent = state.draw ? `${totalSpecs - assignments.size} / ${totalSpecs}` : String(totalSpecs);
+function renderRoleSummary() {
+  const counts = Object.fromEntries(Object.keys(ROLE_LABELS).map((role) => [role, 0]));
+  for (const assignment of state.draw?.assignments || []) {
+    if (counts[assignment.role] !== undefined) counts[assignment.role] += 1;
+  }
 
-  elements.catalog.innerHTML = state.catalog.flatMap((wowClass) => wowClass.specs.map((spec) => {
-    const assignment = assignments.get(spec.id);
-    const latest = latestSpecId === spec.id;
-    const assignee = assignment ? ` · Sorteada para ${assignment.playerName}` : '';
-    return `
-      <article class="spec-card${assignment ? ' is-drawn' : ''}${latest ? ' is-latest' : ''}"
-        data-spec-id="${escapeHtml(spec.id)}" data-role="${escapeHtml(spec.role)}"
-        style="--class-color:${escapeHtml(wowClass.color)}"
-        title="${escapeHtml(`${wowClass.name} · ${spec.name} · ${ROLE_LABELS[spec.role]}${assignee}`)}">
-        <span class="spec-class-name">${escapeHtml(wowClass.name)}</span>
-        <span class="spec-detail">
-          <span class="spec-detail-name">${escapeHtml(spec.name)}</span>
-          <span aria-hidden="true">—</span>
-          <span class="spec-role">${escapeHtml(ROLE_CARD_LABELS[spec.role])}</span>
-        </span>
-        ${assignment ? '<span class="spec-check" aria-label="Sorteada">✓</span>' : ''}
-      </article>`;
-  })).join('');
+  elements.roleSummary.innerHTML = Object.entries(ROLE_LABELS).map(([role, label]) => `
+    <div class="role-stat" data-role="${role}">
+      <span class="role-stat-name">${escapeHtml(label)}</span>
+      <strong class="role-stat-count">${counts[role]}</strong>
+    </div>`).join('');
 }
 
 function renderRoster() {
@@ -161,7 +155,7 @@ function renderRoster() {
   ));
 
   if (!players.length) {
-    elements.players.innerHTML = '<div class="roster-empty"><span class="roster-empty-mark">+</span><span>Nenhum jogador cadastrado</span></div>';
+    elements.players.innerHTML = '<div class="roster-empty"><span class="roster-empty-mark" aria-hidden="true">+</span><strong>Nenhum jogador cadastrado</strong><small>Use Cadastrar para montar seu elenco.</small></div>';
     return;
   }
 
@@ -173,9 +167,13 @@ function renderRoster() {
     const assignmentDetails = assignment
       ? `${sameClass ? 'Mesma classe · ' : ''}${assignment.className} · ${ROLE_LABELS[assignment.role]}`
       : '';
+    const assignmentMeta = assignment
+      ? `${sameClass ? 'Mesma classe · ' : ''}${assignment.className}`
+      : 'Sua spec sorteada aparecerá aqui';
     const currentTitle = current ? `Atual: ${current.name} · ${current.className}` : 'Spec atual não encontrada';
+    const initial = player.name.trim().charAt(0).toLocaleUpperCase('pt-BR') || '?';
     const actions = locked
-      ? '<div class="player-actions" aria-hidden="true"></div>'
+      ? ''
       : `<div class="player-actions">
           <button class="row-action" type="button" data-action="edit" data-player-id="${escapeHtml(player.id)}" aria-label="Editar ${escapeHtml(player.name)}" title="Editar">✎</button>
           <button class="row-action delete" type="button" data-action="delete" data-player-id="${escapeHtml(player.id)}" aria-label="Remover ${escapeHtml(player.name)}" title="Remover">×</button>
@@ -183,17 +181,24 @@ function renderRoster() {
 
     return `
       <article class="player-card${isLatest ? ' is-latest' : ''}" data-player-id="${escapeHtml(player.id)}">
-        <div class="player-card-content">
-          <div class="player-assignment" title="${escapeHtml(assignmentDetails || 'Aguardando sorteio')}">
-            <strong class="player-assigned${assignment ? '' : ' is-empty'}">${escapeHtml(assignment?.specName || '—')}</strong>
-            ${assignment ? `<small class="player-assignment-meta${sameClass ? ' same-class-note' : ''}">${escapeHtml(assignmentDetails)}</small>` : ''}
-          </div>
+        <div class="player-card-heading">
+          <span class="player-avatar" aria-hidden="true">${escapeHtml(initial)}</span>
           <div class="player-identity">
             <strong class="player-name" title="${escapeHtml(player.name)}">${escapeHtml(player.name)}</strong>
-            <small class="player-current" title="${escapeHtml(currentTitle)}">Atual: ${escapeHtml(current?.name || 'Spec não encontrada')}</small>
+            <small class="player-current" title="${escapeHtml(currentTitle)}">Atual · ${escapeHtml(current ? `${current.name} · ${current.className}` : 'Spec não encontrada')}</small>
           </div>
+          ${actions}
         </div>
-        ${actions}
+        <div class="player-result${assignment ? ' has-assignment' : ''}"${assignment ? ` data-role="${escapeHtml(assignment.role)}"` : ''} title="${escapeHtml(assignmentDetails || 'Aguardando sorteio')}">
+          <div class="player-result-copy">
+            <small class="player-result-label">${assignment ? 'Spec sorteada' : 'Aguardando sorteio'}</small>
+            <strong class="player-assigned${assignment ? '' : ' is-empty'}">${escapeHtml(assignment?.specName || 'Sem resultado')}</strong>
+            <small class="player-assignment-meta${sameClass ? ' same-class-note' : ''}">${escapeHtml(assignmentMeta)}</small>
+          </div>
+          ${assignment
+            ? `<span class="role-tag" data-role="${escapeHtml(assignment.role)}">${escapeHtml(ROLE_LABELS[assignment.role])}</span>`
+            : '<span class="pending-badge" aria-label="Ainda não sorteado">…</span>'}
+        </div>
       </article>`;
   }).join('');
 }
@@ -201,48 +206,13 @@ function renderRoster() {
 function render() {
   if (!state) return;
   renderHeader();
-  renderCatalog();
+  renderRoleSummary();
   renderRoster();
 }
 
 function setBusy(value) {
   busy = value;
   renderHeader();
-}
-
-function animateSpecFlight(specId, assignment) {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const playerCard = document.querySelector(`.player-card[data-player-id="${assignment.playerId}"]`);
-  const target = playerCard?.querySelector('.player-assignment');
-  const source = document.querySelector(`.spec-card[data-spec-id="${specId}"]`);
-  if (!target || !source) return;
-
-  playerCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  setTimeout(() => {
-    const sourceRect = source.getBoundingClientRect();
-    const destination = target.getBoundingClientRect();
-    if (!sourceRect.width || !destination.width || sourceRect.bottom < 0 || sourceRect.top > window.innerHeight) return;
-
-    const chip = document.createElement('div');
-    chip.className = 'flight-chip';
-    chip.textContent = `${assignment.specName} · ${assignment.className}`;
-    chip.style.left = `${sourceRect.left + 4}px`;
-    chip.style.top = `${sourceRect.top + 4}px`;
-    chip.style.width = `${Math.min(Math.max(sourceRect.width, 140), 230)}px`;
-    document.body.append(chip);
-
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const destinationX = destination.left + destination.width / 2;
-      const destinationY = destination.top + destination.height / 2;
-      const startX = sourceRect.left + sourceRect.width / 2;
-      const startY = sourceRect.top + sourceRect.height / 2;
-      const scale = Math.min(.96, Math.max(.7, destination.width / Math.min(Math.max(sourceRect.width, 140), 230)));
-      chip.classList.add('is-flying');
-      chip.style.transform = `translate(${destinationX - startX}px, ${destinationY - startY}px) scale(${scale}) rotate(2deg)`;
-    }));
-
-    setTimeout(() => chip.remove(), 1100);
-  }, 180);
 }
 
 async function drawNext() {
@@ -255,7 +225,6 @@ async function drawNext() {
     const latest = nextState.draw.assignments.at(-1);
     state = nextState;
     render();
-    animateSpecFlight(latest.specId, latest);
     showToast(`${latest.playerName}: ${latest.specName} · ${latest.className}`);
   } catch (error) {
     showFeedback(error.message);
@@ -265,7 +234,7 @@ async function drawNext() {
 }
 
 function populateCurrentSpecSelect(selectedId) {
-  elements.currentSpec.innerHTML = state.catalog.map((wowClass) => `
+  elements.currentSpec.innerHTML = '<option value="" disabled selected>Selecione uma spec</option>' + state.catalog.map((wowClass) => `
     <optgroup label="${escapeHtml(wowClass.name)}">
       ${wowClass.specs.map((spec) => `<option value="${escapeHtml(spec.id)}">${escapeHtml(spec.name)} — ${escapeHtml(ROLE_LABELS[spec.role])}</option>`).join('')}
     </optgroup>`).join('');
@@ -276,6 +245,7 @@ function openPlayerDialog(playerId) {
   if (state.draw || busy) return;
   const player = playerId ? state.players.find((candidate) => candidate.id === playerId) : null;
   if (playerId && !player) return;
+  clearPlayerSuccess();
   elements.playerForm.reset();
   elements.playerId.value = player?.id || '';
   elements.playerName.value = player?.name || '';
@@ -293,6 +263,7 @@ async function savePlayer(event) {
   event.preventDefault();
   if (busy) return;
   const playerId = elements.playerId.value;
+  const isNewPlayer = !playerId;
   const payload = { name: elements.playerName.value, currentSpecId: elements.currentSpec.value };
   const normalizedName = payload.name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
   const duplicateName = state.players.some((player) => (
@@ -306,9 +277,17 @@ async function savePlayer(event) {
       body: JSON.stringify(payload),
     });
     state = updated;
-    closeDialog(elements.playerDialog);
     render();
-    showToast(duplicateName ? 'Jogador salvo. Use apelidos para diferenciar nomes iguais.' : 'Jogador salvo.');
+    if (isNewPlayer) {
+      elements.playerForm.reset();
+      showPlayerSuccess(duplicateName
+        ? 'Jogador cadastrado. Use apelidos para diferenciar nomes iguais.'
+        : 'Jogador cadastrado com sucesso! Pode adicionar o próximo.');
+      requestAnimationFrame(() => elements.playerName.focus());
+    } else {
+      closeDialog(elements.playerDialog);
+      showToast(duplicateName ? 'Jogador salvo. Use apelidos para diferenciar nomes iguais.' : 'Jogador salvo.');
+    }
   } catch (error) {
     showToast(error.message);
   } finally {
@@ -400,6 +379,14 @@ function bindEvents() {
   elements.exportButton.addEventListener('click', openExportDialog);
   elements.copyExport.addEventListener('click', copyExportList);
   elements.playerForm.addEventListener('submit', savePlayer);
+  elements.playerForm.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.isComposing || !(event.target instanceof HTMLSelectElement)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    elements.playerForm.requestSubmit();
+  }, true);
+  elements.playerForm.addEventListener('input', clearPlayerSuccess);
+  elements.playerForm.addEventListener('change', clearPlayerSuccess);
   elements.clanForm.addEventListener('submit', saveClanName);
 
   document.getElementById('open-clan-dialog').addEventListener('click', () => {

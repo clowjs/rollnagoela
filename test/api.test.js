@@ -73,7 +73,12 @@ test('a API revela uma escolha por vez, persiste o estado e não devolve o plano
     const baseUrl = `http://127.0.0.1:${port}`;
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /id="specs-title"/);
+    const pageMarkup = await page.text();
+    assert.match(pageMarkup, /id="players-title"/);
+    assert.match(pageMarkup, /id="role-summary"/);
+    assert.match(pageMarkup, /ROLES SORTEADAS/);
+    assert.match(pageMarkup, /id="player-success"/);
+    assert.doesNotMatch(pageMarkup, /id="specs-title"/);
 
     const initial = await requestJson(baseUrl, '/api/state');
     assert.equal(initial.payload.clanName, 'Roll na Goela');
