@@ -52,6 +52,22 @@
       <div class="feedback-message" id="feedback-message" role="status" aria-live="polite" hidden></div>
     </main>
 
+    <dialog class="roll-stage" id="roll-stage" aria-labelledby="roll-stage-title" aria-describedby="roll-stage-hint">
+      <div class="roll-stage-content">
+        <button class="roll-stage-close" id="close-roll-stage" type="button" aria-label="Voltar à lista de jogadores">×</button>
+        <h2 id="roll-stage-title">Quem vai rolar agora?</h2>
+        <div class="roll-stage-result">
+          <span class="roll-stage-player" id="roll-stage-player" aria-live="off">Aguardando...</span>
+          <strong class="roll-stage-value" id="roll-stage-value" aria-live="off"></strong>
+        </div>
+        <small id="roll-stage-hint"></small>
+        <div class="roll-stage-actions">
+          <button class="button button-primary" id="roll-start" type="button">/roll</button>
+          <button class="button button-primary" id="roll-next" type="button" hidden>Sortear próxima pessoa</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog class="modal" id="player-dialog" aria-labelledby="player-dialog-title">
       <form class="modal-form" id="player-form">
         <div class="modal-heading">

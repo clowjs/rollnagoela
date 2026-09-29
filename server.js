@@ -380,11 +380,165 @@ function generatePlan(players) {
   );
 }
 
+function rerollDrawAssignment(state, playerId) {
+  if (!state.draw) throw new HttpError('Comece um sorteio antes de pedir um reroll.', 409);
+
+  const plan = state.draw.plan;
+  const assignmentIndex = plan.findIndex((assignment) => assignment.playerId === playerId);
+  if (assignmentIndex === -1) throw new HttpError('Jogador não encontrado no sorteio.', 404);
+
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player) throw new HttpError('Jogador não encontrado.', 404);
+
+  const assignment = plan[assignmentIndex];
+  const rolledPlayerIds = new Set(state.draw.rolledPlayerIds || []);
+  if (!rolledPlayerIds.has(playerId)) {
+    throw new HttpError('Essa pessoa ainda não rolou uma spec.', 409);
+  }
+  const previousSpecs = state.draw.rerolledSpecs?.[playerId] || [];
+  const excludedSpecIds = new Set([...previousSpecs, assignment.specId]);
+  const usedSpecIds = new Set(plan
+    .filter((_, index) => index !== assignmentIndex)
+    .map((candidate) => candidate.specId));
+  const usedClassesThisRound = new Set(plan
+    .filter((candidate, index) => index !== assignmentIndex && candidate.round === assignment.round)
+    .map((candidate) => candidate.classId));
+  const playerCurrentClass = currentClassId(player);
+
+  const directCandidates = [...SPEC_BY_ID.values()]
+    .filter((spec) => (
+      spec.role === assignment.role
+      && !usedSpecIds.has(spec.id)
+      && !excludedSpecIds.has(spec.id)
+      && spec.id !== player.currentSpecId
+      && (spec.role !== ROLES.TANK || assignment.round === 1)
+    ))
+    .map((spec) => ({
+      type: 'direct',
+      spec,
+      changesClass: spec.classId !== assignment.classId,
+      avoidsCurrentClass: spec.classId !== playerCurrentClass,
+      classIsFree: !usedClassesThisRound.has(spec.classId),
+    }));
+
+  // An unrevealed player in the same round and role can exchange results with
+  // the target. Their old result stays hidden, while the swap preserves the
+  // role totals, spec uniqueness, and the round's unique-class rule.
+  const swaps = [];
+  for (let partnerIndex = 0; partnerIndex < plan.length; partnerIndex += 1) {
+    const partnerAssignment = plan[partnerIndex];
+    if (partnerAssignment.playerId === playerId
+      || rolledPlayerIds.has(partnerAssignment.playerId)
+      || partnerAssignment.round !== assignment.round
+      || partnerAssignment.role !== assignment.role
+      || partnerAssignment.classId === assignment.classId
+      || excludedSpecIds.has(partnerAssignment.specId)
+      || partnerAssignment.specId === player.currentSpecId) continue;
+
+    const partner = state.players.find((candidate) => candidate.id === partnerAssignment.playerId);
+    if (!partner || assignment.specId === partner.currentSpecId) continue;
+
+    swaps.push({
+      type: 'swap',
+      partnerIndex,
+      spec: SPEC_BY_ID.get(partnerAssignment.specId),
+      avoidsCurrentClasses: partnerAssignment.classId !== playerCurrentClass
+        && assignment.classId !== currentClassId(partner),
+    });
+  }
+
+  const candidateGroups = [
+    directCandidates.filter((candidate) => candidate.changesClass && candidate.avoidsCurrentClass && candidate.classIsFree),
+    swaps.filter((candidate) => candidate.avoidsCurrentClasses),
+    directCandidates.filter((candidate) => candidate.changesClass && candidate.classIsFree),
+    swaps,
+    directCandidates.filter((candidate) => candidate.changesClass && candidate.avoidsCurrentClass),
+    directCandidates.filter((candidate) => candidate.changesClass),
+    directCandidates.filter((candidate) => candidate.avoidsCurrentClass),
+    directCandidates,
+  ];
+  const candidates = candidateGroups.find((group) => group.length > 0);
+  if (!candidates) {
+    throw new HttpError('Não há outra spec disponível para esse jogador sem repetir specs ou mudar a role sorteada.', 422);
+  }
+
+  const chosen = candidates[crypto.randomInt(candidates.length)];
+  const previousAssignment = { ...assignment };
+  const applySpec = (current, spec) => ({
+    ...current,
+    classId: spec.classId,
+    className: spec.className,
+    specId: spec.id,
+    specName: spec.name,
+    role: spec.role,
+  });
+
+  plan[assignmentIndex] = applySpec(assignment, chosen.spec);
+  if (chosen.type === 'swap') {
+    const partnerAssignment = plan[chosen.partnerIndex];
+    const previousSpec = SPEC_BY_ID.get(previousAssignment.specId);
+    plan[chosen.partnerIndex] = applySpec(partnerAssignment, previousSpec);
+  }
+
+  if (!state.draw.rerolledSpecs) state.draw.rerolledSpecs = {};
+  state.draw.rerolledSpecs[playerId] = [...new Set([...previousSpecs, previousAssignment.specId])];
+}
+
 function initialState() {
   return {
     clanName: 'Roll na Goela',
     players: [],
     draw: null,
+  };
+}
+
+function normalizeDrawProgress(draw) {
+  if (!draw) return;
+  if (!Array.isArray(draw.rollOrder)) draw.rollOrder = draw.plan.map((assignment) => assignment.playerId);
+  if (!Array.isArray(draw.rolledPlayerIds)) {
+    draw.rolledPlayerIds = draw.plan.slice(0, draw.revealed).map((assignment) => assignment.playerId);
+  }
+  if (!Number.isInteger(draw.selectedIndex)) {
+    // Draws created by earlier versions already exposed `revealed` results.
+    draw.selectedIndex = Math.max(0, draw.revealed - 1);
+  }
+  if (typeof draw.finalized !== 'boolean') draw.finalized = false;
+  if (draw.revealed >= draw.plan.length) draw.finalized = true;
+}
+
+function publicDraw(draw) {
+  if (!draw) return null;
+  const rollOrder = Array.isArray(draw.rollOrder)
+    ? draw.rollOrder
+    : draw.plan.map((assignment) => assignment.playerId);
+  const rolledPlayerIds = Array.isArray(draw.rolledPlayerIds)
+    ? draw.rolledPlayerIds
+    : draw.plan.slice(0, draw.revealed).map((assignment) => assignment.playerId);
+  const selectedIndex = Number.isInteger(draw.selectedIndex)
+    ? draw.selectedIndex
+    : Math.max(0, draw.revealed - 1);
+  const activePlayerId = rollOrder[selectedIndex];
+  const active = draw.plan.find((assignment) => assignment.playerId === activePlayerId);
+
+  return {
+    status: draw.revealed >= draw.plan.length
+      ? 'complete'
+      : draw.revealed > 0 ? 'in_progress' : 'ready',
+    total: draw.plan.length,
+    revealedCount: draw.revealed,
+    target: draw.target,
+    createdAt: draw.createdAt,
+    finalized: draw.finalized === true || draw.revealed >= draw.plan.length,
+    activePlayer: active ? {
+      playerId: active.playerId,
+      playerName: active.playerName,
+      position: active.position,
+      round: active.round,
+      hasRolled: rolledPlayerIds.includes(active.playerId),
+    } : null,
+    assignments: rollOrder.slice(0, draw.revealed)
+      .map((playerId) => draw.plan.find((assignment) => assignment.playerId === playerId))
+      .filter(Boolean),
   };
 }
 
@@ -418,30 +572,19 @@ let stateQueue = Promise.resolve();
 async function getPublicState() {
   await stateQueue;
   const state = await readDiskState();
-  const draw = state.draw
-    ? {
-        status: state.draw.revealed >= state.draw.plan.length
-          ? 'complete'
-          : state.draw.revealed > 0 ? 'in_progress' : 'ready',
-        total: state.draw.plan.length,
-        revealedCount: state.draw.revealed,
-        target: state.draw.target,
-        createdAt: state.draw.createdAt,
-        assignments: state.draw.plan.slice(0, state.draw.revealed),
-      }
-    : null;
 
   return {
     clanName: state.clanName,
     players: state.players,
     catalog: CATALOG,
-    draw,
+    draw: publicDraw(state.draw),
   };
 }
 
 function mutateState(mutator) {
   const operation = stateQueue.then(async () => {
     const state = await readDiskState();
+    normalizeDrawProgress(state.draw);
     await mutator(state);
     await saveState(state);
     return getPublicStateWithoutQueue(state);
@@ -451,19 +594,12 @@ function mutateState(mutator) {
 }
 
 function getPublicStateWithoutQueue(state) {
-  const draw = state.draw
-    ? {
-        status: state.draw.revealed >= state.draw.plan.length
-          ? 'complete'
-          : state.draw.revealed > 0 ? 'in_progress' : 'ready',
-        total: state.draw.plan.length,
-        revealedCount: state.draw.revealed,
-        target: state.draw.target,
-        createdAt: state.draw.createdAt,
-        assignments: state.draw.plan.slice(0, state.draw.revealed),
-      }
-    : null;
-  return { clanName: state.clanName, players: state.players, catalog: CATALOG, draw };
+  return {
+    clanName: state.clanName,
+    players: state.players,
+    catalog: CATALOG,
+    draw: publicDraw(state.draw),
+  };
 }
 
 function normalizeName(value, label, maximumLength) {
@@ -573,21 +709,86 @@ async function handleApi(request, response, url) {
       const result = generatePlan(state.players);
       state.draw = {
         plan: result.assignments,
+        rollOrder: result.assignments.map((assignment) => assignment.playerId),
+        rolledPlayerIds: [],
         target: result.target,
-        // O clique em “Começar” já revela a primeira escolha.
-        revealed: 1,
+        // A pessoa é selecionada primeiro; a spec só fica visível após /roll.
+        revealed: 0,
+        selectedIndex: 0,
+        finalized: false,
         createdAt: new Date().toISOString(),
       };
     }));
   }
 
-  if (request.method === 'POST' && route === '/api/draw/reveal') {
+  const selectPlayerMatch = route.match(/^\/api\/draw\/select\/([^/]+)$/);
+  if (request.method === 'POST' && selectPlayerMatch) {
+    const playerId = decodeURIComponent(selectPlayerMatch[1]);
     return sendJson(response, 200, await mutateState((state) => {
-      if (!state.draw) throw new HttpError('Comece um sorteio antes de revelar escolhas.', 409);
-      if (state.draw.revealed >= state.draw.plan.length) {
-        throw new HttpError('Todas as escolhas já foram reveladas.', 409);
+      if (!state.draw) throw new HttpError('Comece um sorteio antes de selecionar uma pessoa.', 409);
+      if (state.draw.finalized) throw new HttpError('Este sorteio já foi concluído.', 409);
+      if (!state.draw.plan.some((assignment) => assignment.playerId === playerId)) {
+        throw new HttpError('Jogador não encontrado no sorteio.', 404);
       }
-      state.draw.revealed += 1;
+      if (state.draw.rolledPlayerIds.includes(playerId)) {
+        throw new HttpError('Essa pessoa já rolou uma spec; use o reroll.', 409);
+      }
+
+      const orderIndex = state.draw.rollOrder.indexOf(playerId);
+      if (orderIndex === -1) throw new HttpError('Jogador não encontrado na fila do sorteio.', 404);
+      const [selectedPlayerId] = state.draw.rollOrder.splice(orderIndex, 1);
+      state.draw.rollOrder.splice(state.draw.revealed, 0, selectedPlayerId);
+      state.draw.selectedIndex = state.draw.revealed;
+    }));
+  }
+
+  if (request.method === 'POST' && route === '/api/draw/roll') {
+    return sendJson(response, 200, await mutateState((state) => {
+      if (!state.draw) throw new HttpError('Comece um sorteio antes de rolar uma spec.', 409);
+      if (state.draw.finalized) throw new HttpError('Este sorteio já foi concluído.', 409);
+      const playerId = state.draw.rollOrder[state.draw.selectedIndex];
+      if (!playerId || state.draw.rolledPlayerIds.includes(playerId)) {
+        throw new HttpError('A pessoa selecionada já rolou a spec.', 409);
+      }
+      if (state.draw.revealed >= state.draw.plan.length) throw new HttpError('Todas as specs já foram roladas.', 409);
+      state.draw.rolledPlayerIds.push(playerId);
+      state.draw.revealed = state.draw.rolledPlayerIds.length;
+      if (state.draw.revealed >= state.draw.plan.length) state.draw.finalized = true;
+    }));
+  }
+
+  if (request.method === 'POST' && route === '/api/draw/next') {
+    return sendJson(response, 200, await mutateState((state) => {
+      if (!state.draw) throw new HttpError('Comece um sorteio antes de selecionar a próxima pessoa.', 409);
+      if (state.draw.finalized) throw new HttpError('Este sorteio já foi concluído.', 409);
+      const activePlayerId = state.draw.rollOrder[state.draw.selectedIndex];
+      if (!activePlayerId || !state.draw.rolledPlayerIds.includes(activePlayerId)) {
+        throw new HttpError('Rode a spec da pessoa atual antes de sortear a próxima.', 409);
+      }
+      if (state.draw.revealed >= state.draw.plan.length) {
+        throw new HttpError('Todas as pessoas já foram sorteadas.', 409);
+      }
+      state.draw.selectedIndex = state.draw.rollOrder.findIndex((playerId) => (
+        !state.draw.rolledPlayerIds.includes(playerId)
+      ));
+    }));
+  }
+
+  if (request.method === 'POST' && route === '/api/draw/finish') {
+    return sendJson(response, 200, await mutateState((state) => {
+      if (!state.draw) throw new HttpError('Não existe um sorteio para concluir.', 409);
+      if (state.draw.revealed < state.draw.plan.length) {
+        throw new HttpError('Role as specs de todas as pessoas antes de concluir.', 409);
+      }
+      state.draw.finalized = true;
+    }));
+  }
+
+  const rerollMatch = route.match(/^\/api\/draw\/reroll\/([^/]+)$/);
+  if (request.method === 'POST' && rerollMatch) {
+    const playerId = decodeURIComponent(rerollMatch[1]);
+    return sendJson(response, 200, await mutateState((state) => {
+      rerollDrawAssignment(state, playerId);
     }));
   }
 
