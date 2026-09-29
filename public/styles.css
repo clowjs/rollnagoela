@@ -61,8 +61,8 @@ button:disabled { cursor: not-allowed !important; }
 
 .role-summary { display: flex; align-items: center; gap: 18px; padding: 12px 17px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .012); }
 .role-summary-title { flex: 0 0 auto; margin: 0; color: #aebbab; font-size: 12px; font-weight: 750; letter-spacing: .065em; text-transform: uppercase; white-space: nowrap; }
-.role-summary-items { display: grid; width: min(100%, 920px); max-width: 920px; flex: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-left: auto; }
-.role-summary-count { flex: 0 0 auto; }
+.role-summary-items { display: grid; width: auto; max-width: 920px; flex: 0 1 auto; grid-template-columns: repeat(4, max-content); gap: 8px; margin-left: 0; }
+.role-summary-count { flex: 0 0 auto; margin-left: auto; }
 [data-role="tank"] { --role-color: var(--tank); }
 [data-role="healer"] { --role-color: var(--healer); }
 [data-role="melee"] { --role-color: var(--melee); }
@@ -169,7 +169,7 @@ button:disabled { cursor: not-allowed !important; }
 @media (max-width: 900px) {
   .role-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px 12px; }
   .role-summary-title { grid-column: 1; grid-row: 1; }
-  .role-summary-items { width: 100%; max-width: none; grid-column: 1 / -1; grid-row: 2; margin-left: 0; }
+  .role-summary-items { width: auto; max-width: 100%; grid-column: 1 / -1; grid-row: 2; justify-self: start; margin-left: 0; }
   .role-summary-count { grid-column: 2; grid-row: 1; justify-self: end; }
 }
 
@@ -182,7 +182,7 @@ button:disabled { cursor: not-allowed !important; }
   .button { min-height: 42px; padding: 0 6px; font-size: 13px; }
   .button-plus { font-size: 19px; }
   .button-arrow { font-size: 17px; }
-  .role-summary-items { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .role-summary-items { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .roster-list { grid-template-columns: 1fr; gap: 8px; padding: 9px; }
   .player-card { padding: 11px; }
   .modal-form { padding: 20px 17px; }
