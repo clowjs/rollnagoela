@@ -32,7 +32,6 @@ const elements = {
   players: document.getElementById('roster-list'),
   resetDraw: document.getElementById('reset-draw'),
   rollStage: document.getElementById('roll-stage'),
-  rollStageCaption: document.getElementById('roll-stage-caption'),
   rollStagePlayer: document.getElementById('roll-stage-player'),
   rollStageTitle: document.getElementById('roll-stage-title'),
   rollStageValue: document.getElementById('roll-stage-value'),
@@ -245,10 +244,11 @@ function renderRollStage() {
   const player = state.players.find((candidate) => candidate.id === playerId);
   const playerName = player?.name || assignment?.playerName || draw.activePlayer?.playerName || 'Jogador';
   const hasResult = Boolean(assignment);
-  const complete = draw.revealedCount >= draw.total;
+  const allPlayersHaveSpecs = state.players.every((candidate) => (
+    draw.assignments.some((rolled) => rolled.playerId === candidate.id)
+  ));
 
   elements.rollStage.classList.remove('is-rolling');
-  elements.rollStageCaption.textContent = hasResult ? '' : manual ? 'REROLL INDIVIDUAL' : 'PESSOA SORTEADA';
   elements.rollStageTitle.textContent = manual ? 'Reroll para esta pessoa' : hasResult ? 'Spec sorteada' : 'Pessoa sorteada';
   elements.rollStagePlayer.textContent = playerName;
   elements.rollStageValue.textContent = hasResult
@@ -258,7 +258,7 @@ function renderRollStage() {
   elements.rollStageHint.textContent = hasResult ? `Role: ${ROLE_LABELS[assignment.role]}` : '';
 
   elements.rollStart.hidden = false;
-  elements.rollNext.hidden = !hasResult || manual || complete;
+  elements.rollNext.hidden = !hasResult || manual || allPlayersHaveSpecs;
   elements.rollStageActions.hidden = elements.rollStart.hidden && elements.rollNext.hidden;
   for (const button of [elements.rollStart, elements.rollNext]) {
     button.disabled = busy;
@@ -278,7 +278,6 @@ function startRollAnimation(playerName) {
     className: wowClass.name,
   })));
   elements.rollStage.classList.add('is-rolling');
-  elements.rollStageCaption.textContent = 'ROLETA EM MOVIMENTO';
   elements.rollStageTitle.textContent = `Rolando a spec de ${playerName}`;
   elements.rollStagePlayer.textContent = playerName;
   elements.rollStageHint.hidden = false;

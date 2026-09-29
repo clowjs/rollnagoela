@@ -125,8 +125,6 @@ button:disabled { cursor: not-allowed !important; }
 .roll-stage-content { position: relative; padding: 54px 28px 30px; }
 .roll-stage-close { position: absolute; top: 12px; right: 12px; display: grid; width: 35px; height: 35px; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: #b6c1b3; background: rgba(255, 255, 255, .03); cursor: pointer; font-size: 23px; line-height: 1; }
 .roll-stage-close:hover { border-color: rgba(189, 250, 112, .35); color: var(--acid); }
-.roll-stage-caption { margin: 0 0 8px; color: var(--acid); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
-.roll-stage-caption:empty { display: none; }
 .roll-stage h2 { margin: 0; color: #eef4e9; font-size: clamp(21px, 5vw, 25px); font-weight: 750; letter-spacing: -.025em; overflow-wrap: anywhere; }
 .roll-stage-result { display: grid; min-height: 106px; align-content: center; gap: 9px; margin: 20px 0 17px; padding: 15px 12px; border: 1px solid rgba(189, 250, 112, .16); border-radius: 12px; background: rgba(4, 10, 6, .42); }
 .roll-stage-player { overflow: hidden; color: #c5d4c0; font-size: 17px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -136,6 +134,7 @@ button:disabled { cursor: not-allowed !important; }
 .roll-stage-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; margin-top: 22px; }
 .roll-stage-actions[hidden] { display: none; }
 .roll-stage-actions .button { min-width: 112px; }
+.roll-stage-actions .button[hidden] { display: none; }
 .roll-stage.is-rolling .roll-stage-result { border-color: rgba(189, 250, 112, .3); box-shadow: 0 0 25px rgba(189, 250, 112, .08); }
 
 @keyframes player-pop { from { background-color: rgba(189, 250, 112, .17); } to { background-color: rgba(189, 250, 112, .045); } }
