@@ -4,6 +4,7 @@ const ROLE_LABELS = {
   melee: 'Melee DPS',
   ranged: 'Ranged DPS',
 };
+const ROLL_DURATION_MS = 7000;
 
 const elements = {
   addPlayer: document.getElementById('add-player'),
@@ -30,13 +31,27 @@ const elements = {
   playerTitle: document.getElementById('player-dialog-title'),
   players: document.getElementById('roster-list'),
   resetDraw: document.getElementById('reset-draw'),
+  rollStage: document.getElementById('roll-stage'),
+  rollStageCaption: document.getElementById('roll-stage-caption'),
+  rollStagePlayer: document.getElementById('roll-stage-player'),
+  rollStageTitle: document.getElementById('roll-stage-title'),
+  rollStageValue: document.getElementById('roll-stage-value'),
   roleSummary: document.getElementById('role-summary'),
   toast: document.getElementById('toast'),
+  closeRollStage: document.getElementById('close-roll-stage'),
+  rollStageHint: document.getElementById('roll-stage-hint'),
+  rollStageActions: document.querySelector('.roll-stage-actions'),
+  rollStart: document.getElementById('roll-start'),
+  rollNext: document.getElementById('roll-next'),
 };
 
 let state = null;
 let busy = false;
 let toastTimer = null;
+let highlightedPlayerId = null;
+let rollStageMode = 'sequence';
+let manualRerollPlayerId = null;
+let cancelPendingRoll = null;
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -116,18 +131,23 @@ function renderHeader() {
   elements.playerCount.textContent = `${drawnPlayers} / ${totalPlayers}`;
 
   elements.counter.textContent = state.draw
-    ? state.draw.status === 'complete' ? 'Sorteio concluído' : 'Sorteio em andamento'
+    ? state.draw.status === 'complete'
+      ? state.draw.finalized ? 'Sorteio concluído' : 'Todos rolados'
+      : 'Sorteio em andamento'
     : totalPlayers ? `${totalPlayers} cadastrados` : 'Cadastre jogadores';
 
   const complete = state.draw && state.draw.revealedCount >= state.draw.total;
+  const finalized = Boolean(state.draw?.finalized);
   elements.addPlayer.disabled = busy || Boolean(state.draw);
-  elements.mainAction.disabled = busy || (!state.draw && totalPlayers < 2) || Boolean(complete);
+  elements.mainAction.disabled = busy || (!state.draw && totalPlayers < 2) || finalized;
   elements.exportButton.disabled = busy || !complete;
   elements.mainActionLabel.textContent = busy
     ? 'Sorteando…'
-    : complete
+    : finalized
       ? 'Concluído'
-      : !state.draw && totalPlayers < 2 ? `Falta${totalPlayers === 0 ? 'm' : ''} ${2 - totalPlayers}` : 'Sortear';
+      : !state.draw && totalPlayers < 2
+        ? `Falta${totalPlayers === 0 ? 'm' : ''} ${2 - totalPlayers}`
+        : state.draw ? 'Continuar sorteio' : 'Sortear pessoa';
   elements.resetDraw.disabled = busy || !state.draw;
 }
 
@@ -162,21 +182,28 @@ function renderRoster() {
   elements.players.innerHTML = players.map((player) => {
     const current = specs.get(player.currentSpecId);
     const assignment = assignments.get(player.id);
-    const isLatest = assignment && latest?.playerId === player.id;
+    const isSelected = !assignment && state.draw?.activePlayer?.playerId === player.id;
+    const isLatest = assignment && (highlightedPlayerId
+      ? highlightedPlayerId === player.id
+      : latest?.playerId === player.id);
     const assignmentDetails = assignment
       ? `${assignment.specName} · ${assignment.className} · ${ROLE_LABELS[assignment.role]}`
       : 'Sem resultado';
     const currentTitle = current ? `Atual: ${current.name} · ${current.className}` : 'Spec atual não encontrada';
     const initial = player.name.trim().charAt(0).toLocaleUpperCase('pt-BR') || '?';
     const actions = locked
-      ? ''
+      ? assignment
+        ? `<div class="player-actions">
+            <button class="row-action row-action-reroll" type="button" data-action="reroll" data-player-id="${escapeHtml(player.id)}" aria-label="Sortear outra spec para ${escapeHtml(player.name)}" title="Reroll individual"><span aria-hidden="true">↻</span><span aria-hidden="true">Reroll</span></button>
+          </div>`
+        : ''
       : `<div class="player-actions">
           <button class="row-action" type="button" data-action="edit" data-player-id="${escapeHtml(player.id)}" aria-label="Editar ${escapeHtml(player.name)}" title="Editar">✎</button>
           <button class="row-action delete" type="button" data-action="delete" data-player-id="${escapeHtml(player.id)}" aria-label="Remover ${escapeHtml(player.name)}" title="Remover">×</button>
         </div>`;
 
     return `
-      <article class="player-card${isLatest ? ' is-latest' : ''}" data-player-id="${escapeHtml(player.id)}">
+      <article class="player-card${state.draw ? ' is-selectable' : ''}${isLatest ? ' is-latest' : ''}${isSelected ? ' is-selected' : ''}" data-player-id="${escapeHtml(player.id)}">
         <div class="player-card-heading">
           <span class="player-avatar" aria-hidden="true">${escapeHtml(initial)}</span>
           <div class="player-identity">
@@ -203,21 +230,194 @@ function render() {
 function setBusy(value) {
   busy = value;
   renderHeader();
+  for (const button of [elements.rollStart, elements.rollNext]) {
+    button.disabled = busy;
+  }
+}
+
+function renderRollStage() {
+  const draw = state?.draw;
+  if (!draw) return;
+
+  const manual = rollStageMode === 'manual';
+  const playerId = manual ? manualRerollPlayerId : draw.activePlayer?.playerId;
+  const assignment = draw.assignments.find((candidate) => candidate.playerId === playerId);
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  const playerName = player?.name || assignment?.playerName || draw.activePlayer?.playerName || 'Jogador';
+  const hasResult = Boolean(assignment);
+  const complete = draw.revealedCount >= draw.total;
+
+  elements.rollStage.classList.remove('is-rolling');
+  elements.rollStageCaption.textContent = hasResult ? '' : manual ? 'REROLL INDIVIDUAL' : 'PESSOA SORTEADA';
+  elements.rollStageTitle.textContent = manual ? 'Reroll para esta pessoa' : hasResult ? 'Spec sorteada' : 'Pessoa sorteada';
+  elements.rollStagePlayer.textContent = playerName;
+  elements.rollStageValue.textContent = hasResult
+    ? `${assignment.specName} · ${assignment.className}`
+    : '';
+  elements.rollStageHint.hidden = !hasResult;
+  elements.rollStageHint.textContent = hasResult ? `Role: ${ROLE_LABELS[assignment.role]}` : '';
+
+  elements.rollStart.hidden = false;
+  elements.rollNext.hidden = !hasResult || manual || complete;
+  elements.rollStageActions.hidden = elements.rollStart.hidden && elements.rollNext.hidden;
+  for (const button of [elements.rollStart, elements.rollNext]) {
+    button.disabled = busy;
+  }
+}
+
+function openRollStage(mode = 'sequence', playerId = null) {
+  rollStageMode = mode;
+  manualRerollPlayerId = mode === 'manual' ? playerId : null;
+  renderRollStage();
+  if (!elements.rollStage.open) elements.rollStage.showModal();
+}
+
+function startRollAnimation(playerName) {
+  const specs = state.catalog.flatMap((wowClass) => wowClass.specs.map((spec) => ({
+    ...spec,
+    className: wowClass.name,
+  })));
+  elements.rollStage.classList.add('is-rolling');
+  elements.rollStageCaption.textContent = 'ROLETA EM MOVIMENTO';
+  elements.rollStageTitle.textContent = `Rolando a spec de ${playerName}`;
+  elements.rollStagePlayer.textContent = playerName;
+  elements.rollStageHint.hidden = false;
+  elements.rollStageHint.textContent = 'A roleta está girando...';
+  elements.rollStart.hidden = true;
+  elements.rollNext.hidden = true;
+  elements.rollStageActions.hidden = true;
+
+  const showRandomSpec = () => {
+    const spec = specs[Math.floor(Math.random() * specs.length)];
+    elements.rollStageValue.textContent = `${spec.name} · ${spec.className}`;
+  };
+  showRandomSpec();
+  return window.setInterval(showRandomSpec, 115);
 }
 
 async function drawNext() {
   if (busy || !state) return;
   clearFeedback();
+  if (state.draw) {
+    openRollStage('sequence');
+    return;
+  }
+
   setBusy(true);
-  const first = !state.draw;
   try {
-    const nextState = await api(first ? '/api/draw/start' : '/api/draw/reveal', { method: 'POST' });
-    const latest = nextState.draw.assignments.at(-1);
-    state = nextState;
+    state = await api('/api/draw/start', { method: 'POST' });
+    highlightedPlayerId = null;
     render();
-    showToast(`${latest.playerName}: ${latest.specName} · ${latest.className}`);
+    openRollStage('sequence');
   } catch (error) {
     showFeedback(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function spinAndRoll(playerId, endpoint) {
+  if (busy || !state?.draw) return;
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player) return;
+
+  clearFeedback();
+  setBusy(true);
+  const interval = startRollAnimation(player.name);
+  let rolledAssignment = null;
+  let error = null;
+  try {
+    const shouldCommit = await new Promise((resolve) => {
+      const timeout = window.setTimeout(() => {
+        if (cancelPendingRoll === cancel) cancelPendingRoll = null;
+        resolve(true);
+      }, ROLL_DURATION_MS);
+      const cancel = () => {
+        window.clearTimeout(timeout);
+        if (cancelPendingRoll === cancel) cancelPendingRoll = null;
+        resolve(false);
+      };
+      cancelPendingRoll = cancel;
+    });
+    if (!shouldCommit) return;
+    state = await api(endpoint, { method: 'POST' });
+    rolledAssignment = state.draw.assignments.find((assignment) => assignment.playerId === playerId);
+    highlightedPlayerId = playerId;
+    render();
+  } catch (caughtError) {
+    error = caughtError;
+  } finally {
+    window.clearInterval(interval);
+    elements.rollStage.classList.remove('is-rolling');
+    setBusy(false);
+    if (elements.rollStage.open) {
+      renderRollStage();
+      if (error) {
+        elements.rollStageHint.hidden = false;
+        elements.rollStageHint.textContent = error.message;
+      }
+    }
+    if (error) showToast(error.message);
+    else if (!elements.rollStage.open && rolledAssignment) {
+      showToast(`${rolledAssignment.playerName}: ${rolledAssignment.specName} · ${rolledAssignment.className}`);
+    }
+  }
+}
+
+function rollSelectedSpec() {
+  const playerId = rollStageMode === 'manual'
+    ? manualRerollPlayerId
+    : state?.draw?.activePlayer?.playerId;
+  if (!playerId) return;
+  const alreadyRolled = state.draw.assignments.some((assignment) => assignment.playerId === playerId);
+  const endpoint = alreadyRolled
+    ? `/api/draw/reroll/${encodeURIComponent(playerId)}`
+    : '/api/draw/roll';
+  return spinAndRoll(playerId, endpoint);
+}
+
+async function selectNextPlayer() {
+  if (busy || !state?.draw) return;
+  setBusy(true);
+  try {
+    state = await api('/api/draw/next', { method: 'POST' });
+    highlightedPlayerId = null;
+    render();
+    if (elements.rollStage.open) renderRollStage();
+  } catch (error) {
+    if (elements.rollStage.open) {
+      elements.rollStageHint.hidden = false;
+      elements.rollStageHint.textContent = error.message;
+    }
+    else showToast(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function rerollPlayer(playerId) {
+  if (busy || !state?.draw) return;
+  if (!state.draw.assignments.some((assignment) => assignment.playerId === playerId)) return;
+  openRollStage('manual', playerId);
+}
+
+async function selectPlayerForRoll(playerId) {
+  if (busy || !state?.draw) return;
+  const assignment = state.draw.assignments.find((candidate) => candidate.playerId === playerId);
+  if (assignment) {
+    rerollPlayer(playerId);
+    return;
+  }
+  if (state.draw.finalized) return;
+
+  setBusy(true);
+  try {
+    state = await api(`/api/draw/select/${encodeURIComponent(playerId)}`, { method: 'POST' });
+    highlightedPlayerId = null;
+    render();
+    openRollStage('sequence');
+  } catch (error) {
+    showToast(error.message);
   } finally {
     setBusy(false);
   }
@@ -324,6 +524,7 @@ async function resetDraw() {
   setBusy(true);
   try {
     state = await api('/api/draw/reset', { method: 'POST' });
+    highlightedPlayerId = null;
     render();
     showToast('Sorteio reiniciado.');
   } catch (error) {
@@ -368,6 +569,14 @@ function bindEvents() {
   elements.resetDraw.addEventListener('click', resetDraw);
   elements.exportButton.addEventListener('click', openExportDialog);
   elements.copyExport.addEventListener('click', copyExportList);
+  elements.closeRollStage.addEventListener('click', () => closeDialog(elements.rollStage));
+  elements.rollStart.addEventListener('click', rollSelectedSpec);
+  elements.rollNext.addEventListener('click', selectNextPlayer);
+  elements.rollStage.addEventListener('close', () => {
+    if (cancelPendingRoll) cancelPendingRoll();
+    rollStageMode = 'sequence';
+    manualRerollPlayerId = null;
+  });
   elements.playerForm.addEventListener('submit', savePlayer);
   elements.playerForm.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' || event.isComposing || !(event.target instanceof HTMLSelectElement)) return;
@@ -392,9 +601,15 @@ function bindEvents() {
 
   elements.players.addEventListener('click', (event) => {
     const button = event.target.closest('[data-action]');
-    if (!button) return;
-    if (button.dataset.action === 'edit') openPlayerDialog(button.dataset.playerId);
-    if (button.dataset.action === 'delete') removePlayer(button.dataset.playerId);
+    if (button) {
+      if (button.dataset.action === 'edit') openPlayerDialog(button.dataset.playerId);
+      if (button.dataset.action === 'delete') removePlayer(button.dataset.playerId);
+      if (button.dataset.action === 'reroll') rerollPlayer(button.dataset.playerId);
+      return;
+    }
+
+    const card = event.target.closest('.player-card[data-player-id]');
+    if (card && state?.draw) selectPlayerForRoll(card.dataset.playerId);
   });
 }
 

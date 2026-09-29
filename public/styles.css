@@ -77,8 +77,10 @@ button:disabled { cursor: not-allowed !important; }
 .roster-empty strong { color: #e9f2e4; font-size: 17px; }
 .roster-empty small { margin-top: 5px; color: #9eae9b; font-size: 13px; }
 .player-card { display: flex; min-width: 0; flex-direction: column; gap: 13px; padding: 13px; border: 1px solid rgba(194, 228, 195, .12); border-radius: 13px; background: linear-gradient(145deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .012)); transition: border-color .2s, background .2s, box-shadow .2s, transform .2s; }
+.player-card.is-selectable { cursor: pointer; }
 .player-card:hover { transform: translateY(-1px); border-color: rgba(194, 228, 195, .24); background: linear-gradient(145deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .018)); }
 .player-card.is-latest { border-color: rgba(189, 250, 112, .55); background: linear-gradient(145deg, rgba(189, 250, 112, .09), rgba(255, 255, 255, .02)); box-shadow: inset 3px 0 var(--acid), 0 0 24px rgba(189, 250, 112, .08); animation: player-pop .4s ease both; }
+.player-card.is-selected { border-color: rgba(189, 250, 112, .48); box-shadow: inset 3px 0 rgba(189, 250, 112, .72); }
 .player-card-heading { display: grid; min-width: 0; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
 .player-avatar { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(189, 250, 112, .26); border-radius: 13px; color: var(--acid); background: linear-gradient(145deg, rgba(189, 250, 112, .15), rgba(189, 250, 112, .04)); font-size: 18px; font-weight: 750; }
 .player-identity { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
@@ -86,6 +88,7 @@ button:disabled { cursor: not-allowed !important; }
 .player-current { overflow: hidden; color: #a8b7a5; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .player-actions { display: flex; align-items: center; gap: 3px; }
 .row-action { display: grid; width: 30px; height: 31px; padding: 0; place-items: center; border: 1px solid transparent; border-radius: 8px; color: #a8b5a5; background: transparent; cursor: pointer; font-size: 16px; line-height: 1; transition: color .16s, border-color .16s, background .16s; }
+.row-action-reroll { width: auto; grid-auto-flow: column; gap: 5px; padding: 0 7px; font-size: 12px; font-weight: 700; }
 .row-action:hover { border-color: rgba(189, 250, 112, .22); color: var(--acid); background: rgba(189, 250, 112, .07); }
 .row-action.delete:hover { border-color: rgba(242, 139, 128, .25); color: var(--danger); background: rgba(242, 139, 128, .07); }
 .player-result { display: flex; min-width: 0; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 11px; border: 1px solid rgba(194, 228, 195, .1); border-radius: 10px; background: rgba(4, 10, 6, .28); }
@@ -117,6 +120,23 @@ button:disabled { cursor: not-allowed !important; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
 .toast { position: fixed; z-index: 20; right: 18px; bottom: 18px; max-width: min(440px, calc(100vw - 32px)); padding: 13px 16px; transform: translateY(10px); border: 1px solid rgba(189, 250, 112, .3); border-radius: 10px; color: #e7f4dc; background: #17251a; box-shadow: 0 12px 34px rgba(0, 0, 0, .4); font-size: 15px; line-height: 1.4; opacity: 0; pointer-events: none; transition: transform .2s, opacity .2s; }
 .toast.is-visible { transform: translateY(0); opacity: 1; }
+.roll-stage { width: min(calc(100vw - 32px), 440px); max-width: 440px; max-height: calc(100vh - 32px); padding: 0; overflow: hidden; border: 1px solid rgba(189, 250, 112, .32); border-radius: 18px; color: var(--text); background: linear-gradient(145deg, #17231a, #0d160f); box-shadow: 0 24px 90px rgba(0, 0, 0, .72), 0 0 42px rgba(189, 250, 112, .08); text-align: center; }
+.roll-stage::backdrop { background: rgba(2, 6, 3, .82); backdrop-filter: blur(7px); }
+.roll-stage-content { position: relative; padding: 54px 28px 30px; }
+.roll-stage-close { position: absolute; top: 12px; right: 12px; display: grid; width: 35px; height: 35px; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: #b6c1b3; background: rgba(255, 255, 255, .03); cursor: pointer; font-size: 23px; line-height: 1; }
+.roll-stage-close:hover { border-color: rgba(189, 250, 112, .35); color: var(--acid); }
+.roll-stage-caption { margin: 0 0 8px; color: var(--acid); font-size: 11px; font-weight: 800; letter-spacing: .14em; }
+.roll-stage-caption:empty { display: none; }
+.roll-stage h2 { margin: 0; color: #eef4e9; font-size: clamp(21px, 5vw, 25px); font-weight: 750; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.roll-stage-result { display: grid; min-height: 106px; align-content: center; gap: 9px; margin: 20px 0 17px; padding: 15px 12px; border: 1px solid rgba(189, 250, 112, .16); border-radius: 12px; background: rgba(4, 10, 6, .42); }
+.roll-stage-player { overflow: hidden; color: #c5d4c0; font-size: 17px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.roll-stage-value { color: var(--acid); font-size: clamp(19px, 5vw, 23px); font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+.roll-stage small { color: #9eae9b; font-size: 13px; }
+.roll-stage small[hidden] { display: none; }
+.roll-stage-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; margin-top: 22px; }
+.roll-stage-actions[hidden] { display: none; }
+.roll-stage-actions .button { min-width: 112px; }
+.roll-stage.is-rolling .roll-stage-result { border-color: rgba(189, 250, 112, .3); box-shadow: 0 0 25px rgba(189, 250, 112, .08); }
 
 @keyframes player-pop { from { background-color: rgba(189, 250, 112, .17); } to { background-color: rgba(189, 250, 112, .045); } }
 @keyframes success-flash {
