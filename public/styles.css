@@ -105,6 +105,9 @@ button:disabled { cursor: not-allowed !important; }
 .modal-form { padding: 23px; }
 .modal-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .modal-heading h2 { margin: 0; color: #eef4e9; font-size: 23px; font-weight: 700; }
+.access-description { margin: -6px 0 12px; color: #a8b7a5; font-size: 14px; line-height: 1.5; }
+.access-error { margin: 8px 0 0; color: #ffc0b7; font-size: 14px; }
+.access-error[hidden] { display: none; }
 .form-success { display: flex; align-items: center; gap: 9px; margin: -4px 0 0; padding: 10px 12px; transform: translateY(-5px); border: 1px solid rgba(189, 250, 112, .28); border-radius: 9px; color: #e6f5d9; background: rgba(189, 250, 112, .08); font-size: 14px; line-height: 1.4; opacity: 0; }
 .form-success[hidden] { display: none; }
 .form-success.is-visible { animation: success-flash .62s cubic-bezier(.18, .85, .3, 1) both; }

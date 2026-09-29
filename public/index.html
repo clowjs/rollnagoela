@@ -52,6 +52,22 @@
       <div class="feedback-message" id="feedback-message" role="status" aria-live="polite" hidden></div>
     </main>
 
+    <dialog class="modal modal-small access-dialog" id="access-dialog" aria-labelledby="access-title">
+      <form class="modal-form" id="access-form">
+        <div class="modal-heading">
+          <h2 id="access-title">Acesso ao sorteador</h2>
+        </div>
+        <p class="access-description">Digite a senha do grupo para continuar.</p>
+        <p class="access-error" id="access-error" role="alert" hidden></p>
+        <label class="form-field" for="access-password">Senha
+          <input id="access-password" name="password" type="password" required autocomplete="current-password">
+        </label>
+        <div class="modal-actions">
+          <button class="button button-primary" id="access-submit" type="submit">Acessar</button>
+        </div>
+      </form>
+    </dialog>
+
     <dialog class="roll-stage" id="roll-stage" aria-labelledby="roll-stage-title" aria-describedby="roll-stage-hint">
       <div class="roll-stage-content">
         <button class="roll-stage-close" id="close-roll-stage" type="button" aria-label="Voltar à lista de jogadores">×</button>

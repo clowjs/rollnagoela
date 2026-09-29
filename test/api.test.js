@@ -7,6 +7,8 @@ const { CATALOG, ROLES } = require('../server');
 
 const projectDir = path.resolve(__dirname, '..');
 const specs = CATALOG.flatMap((wowClass) => wowClass.specs.map((spec) => ({ ...spec, classId: wowClass.id })));
+const authTokens = new Map();
+const TEST_PASSWORD = 'integration-test-password';
 
 function startTestServer(dataDir) {
   const child = spawn(process.execPath, ['-e', `
@@ -16,7 +18,12 @@ function startTestServer(dataDir) {
     server.listen(0, '127.0.0.1', () => console.log('PORT:' + server.address().port));
   `], {
     cwd: projectDir,
-    env: { ...process.env, ROLLNAGOELA_DATA_DIR: dataDir },
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      ROLLNAGOELA_TEST_PASSWORD: TEST_PASSWORD,
+      ROLLNAGOELA_DATA_DIR: dataDir,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -54,12 +61,22 @@ async function stopTestServer(child) {
 }
 
 async function requestJson(baseUrl, route, method = 'GET', body) {
+  const headers = body ? { 'Content-Type': 'application/json' } : {};
+  const token = authTokens.get(baseUrl);
+  if (token && route !== '/api/auth/login') headers.Authorization = `Bearer ${token}`;
   const response = await fetch(`${baseUrl}${route}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
   return { response, payload: await response.json() };
+}
+
+async function authenticateTestClient(baseUrl) {
+  const result = await requestJson(baseUrl, '/api/auth/login', 'POST', { password: TEST_PASSWORD });
+  assert.equal(result.response.status, 200);
+  assert.equal(typeof result.payload.token, 'string');
+  authTokens.set(baseUrl, result.payload.token);
 }
 
 test('a API revela uma escolha por vez, persiste o estado e não devolve o plano futuro', { timeout: 30000 }, async () => {
@@ -75,6 +92,7 @@ test('a API revela uma escolha por vez, persiste o estado e não devolve o plano
     assert.equal(page.status, 200);
     const pageMarkup = await page.text();
     assert.match(pageMarkup, /id="players-title"/);
+    assert.match(pageMarkup, /id="access-dialog"/);
     assert.match(pageMarkup, /id="role-summary"/);
     assert.match(pageMarkup, /id="roll-stage"/);
     assert.match(pageMarkup, /id="roll-start"/);
@@ -82,6 +100,14 @@ test('a API revela uma escolha por vez, persiste o estado e não devolve o plano
     assert.match(pageMarkup, /ROLES SORTEADAS/);
     assert.match(pageMarkup, /id="player-success"/);
     assert.doesNotMatch(pageMarkup, /id="specs-title"/);
+
+    const blockedState = await requestJson(baseUrl, '/api/state');
+    assert.equal(blockedState.response.status, 401);
+    const wrongPassword = await requestJson(baseUrl, '/api/auth/login', 'POST', { password: 'senha-errada' });
+    assert.equal(wrongPassword.response.status, 401);
+    await authenticateTestClient(baseUrl);
+    const authenticated = await requestJson(baseUrl, '/api/auth/check');
+    assert.equal(authenticated.response.status, 200);
 
     const initial = await requestJson(baseUrl, '/api/state');
     assert.equal(initial.payload.clanName, 'Roll na Goela');
@@ -197,6 +223,7 @@ test('a API permite reroll individual sem repetir spec nem alterar resultados j�
   try {
     const port = await ready;
     const baseUrl = `http://127.0.0.1:${port}`;
+    await authenticateTestClient(baseUrl);
     for (let index = 0; index < 14; index += 1) {
       const result = await requestJson(baseUrl, '/api/players', 'POST', {
         name: `Aventureiro ${index + 1}`,
