@@ -5,8 +5,14 @@ const ROLE_LABELS = {
   ranged: 'Ranged DPS',
 };
 const ROLL_DURATION_MS = 7000;
+const ACCESS_STORAGE_KEY = 'rollnagoelaAccessToken';
 
 const elements = {
+  accessDialog: document.getElementById('access-dialog'),
+  accessError: document.getElementById('access-error'),
+  accessForm: document.getElementById('access-form'),
+  accessPassword: document.getElementById('access-password'),
+  accessSubmit: document.getElementById('access-submit'),
   addPlayer: document.getElementById('add-player'),
   brandName: document.getElementById('brand-clan-name'),
   clanDialog: document.getElementById('clan-dialog'),
@@ -51,6 +57,40 @@ let highlightedPlayerId = null;
 let rollStageMode = 'sequence';
 let manualRerollPlayerId = null;
 let cancelPendingRoll = null;
+let inMemoryAccessToken = null;
+
+function getAccessToken() {
+  try {
+    return window.localStorage.getItem(ACCESS_STORAGE_KEY) || inMemoryAccessToken;
+  } catch {
+    return inMemoryAccessToken;
+  }
+}
+
+function saveAccessToken(token) {
+  inMemoryAccessToken = token;
+  try {
+    window.localStorage.setItem(ACCESS_STORAGE_KEY, token);
+  } catch {
+    // Keep the session usable if browser storage is unavailable.
+  }
+}
+
+function clearAccessToken() {
+  inMemoryAccessToken = null;
+  try {
+    window.localStorage.removeItem(ACCESS_STORAGE_KEY);
+  } catch {
+    // Ignore storage restrictions; the in-memory token is already cleared.
+  }
+}
+
+function openAccessDialog(message = '') {
+  elements.accessError.textContent = message;
+  elements.accessError.hidden = !message;
+  if (!elements.accessDialog.open) elements.accessDialog.showModal();
+  requestAnimationFrame(() => elements.accessPassword.focus());
+}
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -104,10 +144,12 @@ function showPlayerSuccess(message) {
 }
 
 async function api(path, options = {}) {
+  const accessToken = getAccessToken();
   const response = await fetch(path, {
     ...options,
     headers: {
       ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(accessToken && path !== '/api/auth/login' ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...options.headers,
     },
   });
@@ -117,8 +159,36 @@ async function api(path, options = {}) {
   } catch {
     throw new Error('Resposta inválida do servidor.');
   }
+  if (response.status === 401 && path !== '/api/auth/login') {
+    clearAccessToken();
+    openAccessDialog(payload.error || 'Informe a senha para acessar o aplicativo.');
+  }
   if (!response.ok) throw new Error(payload.error || 'Não foi possível concluir a operação.');
   return payload;
+}
+
+async function login(event) {
+  event.preventDefault();
+  if (busy) return;
+  elements.accessSubmit.disabled = true;
+  elements.accessError.hidden = true;
+  try {
+    const result = await api('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ password: elements.accessPassword.value }),
+    });
+    saveAccessToken(result.token);
+    state = await api('/api/state');
+    elements.accessPassword.value = '';
+    render();
+    closeDialog(elements.accessDialog);
+  } catch (error) {
+    elements.accessError.textContent = error.message;
+    elements.accessError.hidden = false;
+    elements.accessPassword.select();
+  } finally {
+    elements.accessSubmit.disabled = false;
+  }
 }
 
 function renderHeader() {
@@ -563,6 +633,8 @@ async function copyExportList() {
 }
 
 function bindEvents() {
+  elements.accessForm.addEventListener('submit', login);
+  elements.accessDialog.addEventListener('cancel', (event) => event.preventDefault());
   elements.addPlayer.addEventListener('click', () => openPlayerDialog());
   elements.mainAction.addEventListener('click', drawNext);
   elements.resetDraw.addEventListener('click', resetDraw);
@@ -614,10 +686,17 @@ function bindEvents() {
 
 async function initialize() {
   bindEvents();
+  if (!getAccessToken()) {
+    openAccessDialog();
+    return;
+  }
   try {
+    await api('/api/auth/check');
     state = await api('/api/state');
     render();
   } catch (error) {
+    clearAccessToken();
+    openAccessDialog(error.message);
     elements.counter.textContent = 'Servidor indisponível';
     elements.mainActionLabel.textContent = 'Indisponível';
     showFeedback(error.message);

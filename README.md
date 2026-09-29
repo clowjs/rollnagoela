@@ -16,7 +16,11 @@ Abra [http://localhost:3000](http://localhost:3000). Para usar na rede local dur
 $env:HOST="0.0.0.0"; npm start
 ```
 
-O cadastro, o nome do clã e o sorteio ficam em `data/state.json`, criado automaticamente. O servidor não tem login; compartilhe o endereço apenas em uma rede de confiança.
+O cadastro, o nome do clã e o sorteio ficam em `data/state.json`, criado automaticamente. O acesso ao app e à API exige a senha compartilhada do grupo; ainda assim, use o endereço apenas em uma rede de confiança.
+
+## Acesso por senha
+
+O servidor valida a senha usando PBKDF2 e guarda somente o salt e o hash em `server.js`. Após entrar, o navegador salva um token de acesso no `localStorage`; não há sessão ou banco de dados no deploy. Para trocar a senha, gere um novo salt/hash com `crypto.pbkdf2Sync` e atualize as constantes `ACCESS_PASSWORD_SALT` e `ACCESS_PASSWORD_HASH` em `server.js`. Essa barreira é para uso casual do grupo, não substitui autenticação robusta.
 
 ## Regras do sorteio
 

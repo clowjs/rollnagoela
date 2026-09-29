@@ -9,6 +9,41 @@ const DATA_DIR = path.resolve(process.env.ROLLNAGOELA_DATA_DIR || path.join(ROOT
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const MAX_BODY_BYTES = 256 * 1024;
 const FIRST_ROUND_SIZE = 13;
+const ACCESS_PASSWORD_SALT = Buffer.from('7fc16dfef3158000f33a014c84d5c2c6', 'hex');
+const ACCESS_PASSWORD_HASH = Buffer.from('eecab1e90dc4e25969469756b682e034243fe320f06b195656779949f752799c', 'hex');
+const ACCESS_PASSWORD_ITERATIONS = 310_000;
+const ACCESS_TOKEN = crypto.createHmac('sha256', ACCESS_PASSWORD_HASH)
+  .update('roll-na-goela-browser-access-v1')
+  .digest('hex');
+
+function verifyAccessPassword(password) {
+  if (typeof password !== 'string') return false;
+
+  // Keep integration-test credentials out of the production verifier.
+  if (process.env.NODE_ENV === 'test' && process.env.ROLLNAGOELA_TEST_PASSWORD) {
+    const received = Buffer.from(password);
+    const expected = Buffer.from(process.env.ROLLNAGOELA_TEST_PASSWORD);
+    return received.length === expected.length && crypto.timingSafeEqual(received, expected);
+  }
+
+  const candidate = crypto.pbkdf2Sync(
+    password,
+    ACCESS_PASSWORD_SALT,
+    ACCESS_PASSWORD_ITERATIONS,
+    ACCESS_PASSWORD_HASH.length,
+    'sha256',
+  );
+  return crypto.timingSafeEqual(candidate, ACCESS_PASSWORD_HASH);
+}
+
+function hasValidAccessToken(request) {
+  const authorization = request.headers.authorization || '';
+  const match = authorization.match(/^Bearer ([\da-f]{64})$/i);
+  if (!match) return false;
+  const candidate = Buffer.from(match[1], 'hex');
+  const expected = Buffer.from(ACCESS_TOKEN, 'hex');
+  return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
+}
 
 const ROLES = Object.freeze({
   TANK: 'tank',
@@ -644,6 +679,18 @@ function sendJson(response, status, payload) {
 async function handleApi(request, response, url) {
   const route = url.pathname;
 
+  if (request.method === 'POST' && route === '/api/auth/login') {
+    const body = await readJsonBody(request);
+    if (!verifyAccessPassword(body.password)) {
+      return sendJson(response, 401, { error: 'Senha incorreta.' });
+    }
+    return sendJson(response, 200, { token: ACCESS_TOKEN });
+  }
+
+  if (request.method === 'GET' && route === '/api/auth/check') {
+    return sendJson(response, 200, { authenticated: true });
+  }
+
   if (request.method === 'GET' && route === '/api/state') {
     return sendJson(response, 200, await getPublicState());
   }
@@ -855,6 +902,10 @@ function createRequestHandler() {
       if (url.pathname.startsWith('/api/')) {
         if (!['GET', 'POST', 'PUT', 'DELETE'].includes(request.method)) {
           return sendJson(response, 405, { error: 'Método não permitido.' });
+        }
+        const isPasswordLogin = request.method === 'POST' && url.pathname === '/api/auth/login';
+        if (!isPasswordLogin && !hasValidAccessToken(request)) {
+          return sendJson(response, 401, { error: 'Informe a senha para acessar o aplicativo.' });
         }
         return await handleApi(request, response, url);
       }
