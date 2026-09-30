@@ -4,7 +4,7 @@ const ROLE_LABELS = {
   melee: 'Melee DPS',
   ranged: 'Ranged DPS',
 };
-const ROLL_DURATION_MS = 7000;
+const ROLL_DURATION_MS = 20000;
 const ACCESS_STORAGE_KEY = 'rollnagoelaAccessToken';
 
 const elements = {

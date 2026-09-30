@@ -38,7 +38,7 @@ O catálogo contém 13 classes e 40 specs, classificadas como tank, healer, DPS 
 
 O contador de jogadores mostra quantas specs foram roladas (`0 / total` até `total / total`). Fechar o modal mantém o progresso; **Continuar sorteio** reabre na pessoa/etapa atual. Depois do último roll, o sorteio se conclui automaticamente e o X fecha o modal. **Exportar** abre a lista `Jogador - Classe - Spec`, pronta para copiar.
 
-Cada `/roll` e reroll tem 7 segundos de animação de suspense antes de mostrar o resultado.
+Cada `/roll` e reroll tem 20 segundos de animação de suspense antes de mostrar o resultado.
 
 ## Desenvolvimento e testes
 
